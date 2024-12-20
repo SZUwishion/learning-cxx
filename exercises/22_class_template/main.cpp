@@ -1,4 +1,6 @@
 ﻿#include "../exercise.h"
+#include <numeric>
+#include <cstring>
 
 // READ: 类模板 <https://zh.cppreference.com/w/cpp/language/class_template>
 
@@ -8,10 +10,11 @@ struct Tensor4D {
     T *data;
 
     Tensor4D(unsigned int const shape_[4], T const *data_) {
-        unsigned int size = 1;
+        unsigned int size = std::accumulate(shape_, shape_ + 4, 1, std::multiplies<>());
         // TODO: 填入正确的 shape 并计算 size
         data = new T[size];
         std::memcpy(data, data_, size * sizeof(T));
+        std::memcpy(shape, shape_, 4 * sizeof(unsigned int));
     }
     ~Tensor4D() {
         delete[] data;
@@ -26,8 +29,48 @@ struct Tensor4D {
     // `others` 长度为 1 但 `this` 长度不为 1 的维度将发生广播计算。
     // 例如，`this` 形状为 `[1, 2, 3, 4]`，`others` 形状为 `[1, 2, 1, 4]`，
     // 则 `this` 与 `others` 相加时，3 个形状为 `[1, 2, 1, 4]` 的子张量各自与 `others` 对应项相加。
+    bool shape_match(unsigned int const *shape0, unsigned int const *shape1, bool* unmatched_dim) {
+        for (auto i = 0; i < 4; ++i) {
+            if (shape0[i] != shape1[i] && shape1[i] != 1) {
+                return false;
+            }
+            if (shape0[i] != shape1[i]) {
+                unmatched_dim[i] = true;
+            }
+        }
+        return true;
+    }
     Tensor4D &operator+=(Tensor4D const &others) {
         // TODO: 实现单向广播的加法
+        bool unmatched_dim[4] = {false, false, false, false};
+        ASSERT(shape_match(shape, others.shape, unmatched_dim), "Shape mismatch.");
+        // std::cout << shape[0] << " " << shape[1] << " " << shape[2] << " " << shape[3] << std::endl;
+        unsigned int size = shape[0] * shape[1] * shape[2] * shape[3];
+        T broadcast_other_data[size]; // 创建一个与 `this` 形状相同的临时数组
+
+        // 初始化临时数组，根据需要进行广播
+        for (unsigned int i = 0; i < shape[0]; ++i) {
+            for (unsigned int j = 0; j < shape[1]; ++j) {
+                for (unsigned int k = 0; k < shape[2]; ++k) {
+                    for (unsigned int l = 0; l < shape[3]; ++l) {
+                        unsigned int index = i * (shape[1] * shape[2] * shape[3]) + j * (shape[2] * shape[3]) + k * shape[3] + l;
+                        unsigned int other_index = 
+                            (unmatched_dim[0] ? 0 : i) * (others.shape[1] * others.shape[2] * others.shape[3]) +
+                            (unmatched_dim[1] ? 0 : j) * (others.shape[2] * others.shape[3]) +
+                            (unmatched_dim[2] ? 0 : k) * others.shape[3] +
+                            (unmatched_dim[3] ? 0 : l);
+                        broadcast_other_data[index] = others.data[other_index];
+                    }
+                }
+            }
+        }
+        // 将临时数组的数据加到 `this` 的数据上
+        for (unsigned int i = 0; i < size; ++i) {
+            // std::cout << this->data[i] << " + " << broadcast_other_data[i] << " = ";
+            this->data[i] += broadcast_other_data[i];
+            // std::cout << this->data[i] << std::endl;
+        }
+
         return *this;
     }
 };
